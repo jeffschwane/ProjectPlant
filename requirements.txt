@@ -1,1 +1,4 @@
 sqlalchemy
+datetime
+numpy
+pandas
