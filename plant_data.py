@@ -7,48 +7,50 @@ import pymysql
 # import pandas as pd
 
 
-class Plant():
-    """Data container for each plant
-    ...
+# class Plant():
+#     """Data container for each plant
+#     ...
 
-    Attributes
-    ----------
-    name: str
-        plant common name
-    light: list
-        light data
-    soil_humid: list
-        soil humidity data
-    temp: list
-        temperature data
-    soil_fert: list
-         soil fertility data
+#     Attributes
+#     ----------
+#     name: str
+#         plant common name
+#     light: list
+#         light data
+#     soil_humid: list
+#         soil humidity data
+#     temp: list
+#         temperature data
+#     soil_fert: list
+#          soil fertility data
 
-    Methods
-    -------
-    __str__(self)
-        Prints the plant's name
-    """
+#     Methods
+#     -------
+#     __str__(self)
+#         Prints the plant's name
+#     """
 
-    def __init__(self, name, light=[], soil_humid=[], temp=[], soil_fert=[]):
-        self.name = name
-        self.light = light
-        self.soil_humid = soil_humid
-        self.temp = temp
-        self.soil_fert = soil_fert
+# def __init__(self, name, light=[], soil_humid=[], temp=[], soil_fert=[]):
+#     self.name = name
+#     self.light = light
+#     self.soil_humid = soil_humid
+#     self.temp = temp
+#     self.soil_fert = soil_fert
 
-    def __str__(self):
-        return self.name
+# def __str__(self):
+#     return self.name
 
+# # Create class instances of each plant
+# plant_list = []
+# for plant_name in plant_list_titles:
+#     plant_list.append(Plant(plant_name))
 
 # Open and read-in the exported plant data
 data = []
-plant_list_titles = []
-dates = set()  # FIXME - dates need to be unique for every plant in the plant list since they are different - make dates an object that has a plant attribute
 plant_dates = {}
+last_date_data = {}
 title_row = 'null'
 start_row = 5
-# TODO - Ensure that only the newest data is imported and stored - use the SQL databased to store the date of last import
 with codecs.open('2021-01-07-18-HHCC.csv', 'rU', 'utf-16') as f:
     csv_reader = csv.reader(f, delimiter='\t')
     for row_index, row in enumerate(csv_reader):
@@ -59,41 +61,14 @@ with codecs.open('2021-01-07-18-HHCC.csv', 'rU', 'utf-16') as f:
         except IndexError:  # necessary since some rows contain no data in columns
             pass
         if row_index == title_row:  # store plant names and dates
+            # TODO - Pull out common name vs. latin name - use regular expression to find latin name in parenthesis
             plant_name = row[0]
             plant_dates[plant_name] = ' '.join(row[1::4]).split()
-            plant_list_titles.append(plant_name)
+            last_date_data[plant_name] = plant_dates[plant_name][-1]
         elif row_index >= start_row:
             # Clean by removing "--" elements
             row[:] = [0 if x == '--' else x for x in row]
             data.append(row)
-
-
-# # Create class instances of each plant
-# plant_list = []
-# for plant_name in plant_list_titles:
-#     plant_list.append(Plant(plant_name))
-
-# # loop through data and parse out sensor data into plant class instances
-# # TODO - Expand this to include all the plants
-# column = 1
-# while column != 'end':
-#     try:
-#         pass
-#     except IndexError:
-#         column = 'end'
-#         break
-# for row in data[0:24]:
-#     try:
-#         plant_list[0].light.append(row[column])
-#         plant_list[0].soil_humid.append(row[column + 1])
-#         plant_list[0].temp.append(row[column + 2])
-#         plant_list[0].soil_fert.append(row[column + 3])
-#     except IndexError:
-#         pass
-# iterate betweenall plants
-
-# write_plant_data_for(i, column)
-# column += 4
 
 # Store data into local database via tables
 
@@ -126,8 +101,10 @@ plant_table = sqlalchemy.Table('plants', metadata,
                                sqlalchemy.Column(
                                    'temp_min', sqlalchemy.Numeric()),
                                sqlalchemy.Column(
-                                   'temp_max', sqlalchemy.Numeric())
-                               )
+                                   'temp_max', sqlalchemy.Numeric()),
+                               sqlalchemy.Column(
+                                   'last_import_date', sqlalchemy.Date()
+                               ))
 readings_table = sqlalchemy.Table('readings', metadata,
                                   sqlalchemy.Column(
                                       'plant_id', sqlalchemy.Integer(), primary_key=True),
@@ -146,27 +123,43 @@ readings_table = sqlalchemy.Table('readings', metadata,
 # Execute table creation
 metadata.create_all(engine)
 
+# Select last import date from database for each plant
+query = sqlalchemy.select(
+    [plant_table.columns.name_common, plant_table.columns.last_import_date])
+result_proxy = connection.execute(query)
+result_set = result_proxy.fetchall()
+print(result_set)
+# TODO - Store result as last_import_date[name_common]
+
 # Insert plant data into database tables
 num_columns = 4  # four columns of sensor data
-plant_id = 0  # TODO check if entry already exists, and if not don't insert
+plant_id = 0
 for plant_name, dates_array in plant_dates.items():
-    query = sqlalchemy.insert(plant_table).values(
-        id=plant_id + 1,
-        name_common=plant_name)
-    result_proxy = connection.execute(query)
+    # Check against date of last import and only update for dates not in database
+    last_datetime_data = dt.datetime.strptime(
+        last_date_data[plant_name], "%Y-%m-%d")
+    # if plant_name in sql table does not exist:
+    # if True:
+    #     query = sqlalchemy.insert(plant_table).values(
+    #         id=plant_id + 1,
+    #         name_common=plant_name,
+    #         last_import_date=last_datetime_data)
+    #     result_proxy = connection.execute(query)
+
+    # if last_datetime_data > last_import_date[plant_name]:
     # iterate through each day
-    for day_index, day in enumerate(dates_array):
-        # iterate through each hour
-        for row in data[plant_id*24: (plant_id+1)*24]:
-            plant_datetime = dt.datetime.strptime(
-                f'{day} {row[0]}', "%Y-%m-%d %H:%M")
-            query = sqlalchemy.insert(readings_table).values(
-                plant_id=plant_id+1,
-                datetime=plant_datetime,
-                light=row[(day_index * num_columns) + 1],
-                soil_moist=row[(day_index * num_columns) + 2],
-                temp=row[(day_index*num_columns) + 3],
-                soil_fert=row[(day_index * num_columns) + 4]
-            )
-            result_proxy = connection.execute(query)
+    # for day_index, day in enumerate(dates_array):
+    #     # iterate through each hour
+    #     for row in data[plant_id*24: (plant_id+1)*24]:
+    #         plant_datetime = dt.datetime.strptime(
+    #             f'{day} {row[0]}', "%Y-%m-%d %H:%M")
+    #         query = sqlalchemy.insert(readings_table).values(
+    #             plant_id=plant_id+1,
+    #             datetime=plant_datetime,
+    #             light=row[(day_index * num_columns) + 1],
+    #             soil_moist=row[(day_index * num_columns) + 2],
+    #             temp=row[(day_index*num_columns) + 3],
+    #             soil_fert=row[(day_index * num_columns) + 4]
+    #         )
+    #         result_proxy = connection.execute(query)
     plant_id += 1

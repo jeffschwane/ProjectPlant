@@ -1,4 +1,5 @@
 sqlalchemy
+pymysql
 datetime
 numpy
 pandas
