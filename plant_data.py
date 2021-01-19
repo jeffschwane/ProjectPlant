@@ -8,67 +8,31 @@ import pymysql
 # import pandas as pd
 
 
-def insert_data_sql(dates_array, data, plant_id):
+def insert_data_sql(dates_array, data, plant_id, last_import_date):
+    """Inserts readings data into the SQL database and updates last import date"""
     # iterate through each day
     for day_index, day in enumerate(dates_array):
-        # iterate through each hour
-        for row in data[plant_id*24: (plant_id+1)*24]:
-            plant_datetime = dt.datetime.strptime(
-                f'{day} {row[0]}', "%Y-%m-%d %H:%M")
-            query = sqlalchemy.insert(readings_table).values(
-                plant_id=plant_id+1,
-                datetime=plant_datetime,
-                light=row[(day_index * num_columns) + 1],
-                soil_moist=row[(day_index * num_columns) + 2],
-                temp=row[(day_index*num_columns) + 3],
-                soil_fert=row[(day_index * num_columns) + 4]
-            )
-            result_proxy = connection.execute(query)
+        if day > last_import_date:
+            # iterate through each hour
+            for row in data[plant_id*24: (plant_id+1)*24]:
+                time = dt.datetime.strptime(row[0], '%H:%M').time()
+                reading_datetime = dt.datetime.combine(day, time)
+                query = sqlalchemy.insert(readings_table).values(
+                    plant_id=plant_id+1,
+                    datetime=reading_datetime,
+                    light=row[(day_index * num_columns) + 1],
+                    soil_moist=row[(day_index * num_columns) + 2],
+                    temp=row[(day_index*num_columns) + 3],
+                    soil_fert=row[(day_index * num_columns) + 4]
+                )
+                result_proxy = connection.execute(query)
     # update new last import date
-    new_last_import_date = last_date_data[plant_name].strftime(
+    new_last_import_date = dates_array[-1].strftime(
         "%Y-%m-%d")
     query = sqlalchemy.update(plant_table).values(
         last_import_date=new_last_import_date).where(plant_table.columns.id == plant_id + 1)
     result = connection.execute(query)
 
-
-# class Plant():
-#     """Data container for each plant
-#     ...
-
-#     Attributes
-#     ----------
-#     name: str
-#         plant common name
-#     light: list
-#         light data
-#     soil_humid: list
-#         soil humidity data
-#     temp: list
-#         temperature data
-#     soil_fert: list
-#          soil fertility data
-
-#     Methods
-#     -------
-#     __str__(self)
-#         Prints the plant's name
-#     """
-
-# def __init__(self, name, light=[], soil_humid=[], temp=[], soil_fert=[]):
-#     self.name = name
-#     self.light = light
-#     self.soil_humid = soil_humid
-#     self.temp = temp
-#     self.soil_fert = soil_fert
-
-# def __str__(self):
-#     return self.name
-
-# # Create class instances of each plant
-# plant_list = []
-# for plant_name in plant_list_titles:
-#     plant_list.append(Plant(plant_name))
 
 # Open and read-in the exported plant data
 data = []
@@ -76,7 +40,7 @@ plant_dates = {}
 last_date_data = {}
 title_row = 'null'
 start_row = 5
-with codecs.open('2021-01-07-18-HHCC.csv', 'rU', 'utf-16') as f:
+with codecs.open('2021-01-18-13-HHCC.csv', 'rU', 'utf-16') as f:
     csv_reader = csv.reader(f, delimiter='\t')
     for row_index, row in enumerate(csv_reader):
         try:
@@ -87,12 +51,13 @@ with codecs.open('2021-01-07-18-HHCC.csv', 'rU', 'utf-16') as f:
             pass
         if row_index == title_row:  # store plant names, dates, and last date in the data
             plant_name = row[0]
-            plant_dates[plant_name] = ' '.join(row[1::4]).split()
-            # Remove last date so that last date has all hours
-            plant_dates[plant_name].pop()
-            last_date_data[plant_name] = plant_dates[plant_name][-1]
-            last_date_data[plant_name] = dt.datetime.strptime(
-                last_date_data[plant_name], "%Y-%m-%d").date()  # Convert to date object
+            dates = ' '.join(row[1::4]).split()  # dates occur every fourth row
+            dates.pop()  # Remove last date so that last date has 24 hours
+            # Convert to date objects
+            dates = [dt.datetime.strptime(
+                date, '%Y-%m-%d').date() for date in dates]
+            last_date_data[plant_name] = dates[-1]
+            plant_dates[plant_name] = dates  # Store as dictionary
         elif row_index >= start_row:
             # Clean by replacing "--" elements with zeros
             row[:] = [0 if x == '--' else x for x in row]
@@ -182,12 +147,13 @@ for plant_name, dates_array in plant_dates.items():
     # Check against date of last import and only update for dates not in database
 
     if last_import_date[common_name] is None:
-        insert_data_sql(dates_array, data, plant_id)
+        insert_data_sql(dates_array, data, plant_id, dt.date(2020, 1, 1))
         print(
             f'Data was successfully imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
     elif last_import_date[common_name] is not None:
         if last_date_data[plant_name] > last_import_date[common_name]:
-            insert_data_sql(dates_array, data, plant_id)
+            insert_data_sql(dates_array, data, plant_id,
+                            last_import_date[common_name])
             print(
                 f'More data was imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
         else:
