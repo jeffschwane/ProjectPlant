@@ -34,13 +34,16 @@ def insert_data_sql(dates_array, data, plant_id, last_import_date):
     result = connection.execute(query)
 
 
+# Query user for file
+file = input('Enter filename to read/update (.csv): ')
+
 # Open and read-in the exported plant data
 data = []
 plant_dates = {}
 last_date_data = {}
 title_row = 'null'
 start_row = 5
-with codecs.open('2021-01-18-13-HHCC.csv', 'rU', 'utf-16') as f:
+with codecs.open(file, 'rU', 'utf-16') as f:
     csv_reader = csv.reader(f, delimiter='\t')
     for row_index, row in enumerate(csv_reader):
         try:

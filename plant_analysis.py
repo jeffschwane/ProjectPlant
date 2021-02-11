@@ -7,12 +7,13 @@ import sys
 import os
 from IPython.display import display
 from scipy.signal import argrelextrema
+from scipy.signal import lfilter
 
 
 def select_plant(plant_id, plant_table, readings_table):
     """Returns the plant name and sensor readings for the particular plant based on the plant id number provided and DataFrames"""
     plant_name = plant_table[plant_table.index == plant_id].name_common.item()
-    plant_readings = readings_table[readings_table.index == plant_id]
+    plant_readings = readings_table[readings_table.plant_id == plant_id]
     return plant_name, plant_readings
 
 
@@ -22,7 +23,7 @@ def plot_time_series(x, y, title, ylabel, figure='None'):
     if figure == 'None':
         fig = plt.figure()
     else:
-        fig = figure  # FIXME - Determine how to plot on the same figure
+        fig = figure  # FIXME - plot on the same figure
     plt.plot(x, y)
     plt.xlabel('Date')
     plt.ylabel(ylabel)
@@ -30,16 +31,15 @@ def plot_time_series(x, y, title, ylabel, figure='None'):
     return fig
 
 
-def plot_day(x, y, title, ylabel):
+def plot_day(x, y, row, col, axis, title, ylabel):
     """Creates time series plots given x and y series data, title and data label for y axis"""
-    fig = plt.figure()
-    plt.bar(x, y, color='orange')
-    plt.xlabel('Hour in a Day')
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.xticks(np.arange(0, 25, 3))
-    plt.ylim(0, 1000)
-    return fig
+    axis[row, col].bar(x, y, color='orange')
+    axis[row, col].set_xlabel('Hour in a Day')
+    axis[row, col].set_ylabel(ylabel)
+    axis[row, col].set_title(title)
+    axis[row, col].set_xticks(np.arange(0, 25, 3))
+    axis[row, col].set_ylim(0, 1000)
+    return axis
 
 
 # Connect to local SQL database
@@ -50,21 +50,30 @@ connection = engine.connect()
 # Load SQL data into pandas DataFrames
 plant_table = pd.read_sql('plants', connection, index_col='id', columns=[
                           'name_common', 'name_latin', 'soil_moist_min', 'soil_moist_max', 'light_min', 'light_max'])
-readings_table = pd.read_sql('readings', connection, index_col='plant_id', columns=[
-                             'datetime', 'light', 'soil_moist', 'soil_fert', 'temp'])
+readings_table = pd.read_sql('readings', connection, columns=[
+                             'plant_id', 'datetime', 'light', 'soil_moist', 'soil_fert', 'temp'])
+
+# Create new column "month" for monthly analysis later on
+readings_table['month'] = readings_table['datetime'].dt.month
+
+# Apply smoothing function to soil_moist data
+n = 15  # the larger n is, the smoother curve will be
+b = [1.0 / n] * n
+a = 1
+readings_table.soil_moist = lfilter(b, a, readings_table.soil_moist)
 
 # Ask for user input about graphs
 entry = 'null'
 num = 'null'
-while entry not in ['a', 'l', 'm' 's']:
+while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
     entry = input(
-        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture\n(g) for monthly global solar radiation for NYC\n(s) to skip\n: ')  # FIXME - Put all graphs under this umbrella and seperate ability to select plant #s
+        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture\n(g) for monthly global solar radiation for NYC\n(w) for time between watering\n(s) to skip\n: ')
 
     if entry == 's':
         break
 
     elif entry == 'a':  # Graph of light data in its entirety for each plant
-        for plant_id in readings_table.index.unique():
+        for plant_id in readings_table.plant_id.unique():
             plant_name, plant_readings = select_plant(
                 plant_id, plant_table, readings_table)
             x = plant_readings.datetime
@@ -75,36 +84,38 @@ while entry not in ['a', 'l', 'm' 's']:
 
     # Graph of light data over course of an average day each month for each plant
     elif entry == 'l':
-        while num not in ['1', '2', '3', '4']:
+        while num != 'q':
             num = input(
-                'Enter plant number (1-4) to graph avg light for each month: ')
-        # Create new column "month"
-        readings_table['month'] = readings_table['datetime'].dt.month
-        plant_name, plant_readings = select_plant(
-            int(num), plant_table, readings_table)
-        for month in np.arange(1, 13):
-            if month in plant_readings.month.values:
-                # select month of data
-                plant_data_month = plant_readings.loc[plant_readings.month == month]
-                plant_data_month = plant_data_month.reset_index()
-                readings_avg_day = plant_data_month.groupby(
-                    plant_data_month['datetime'].dt.hour).mean()  # group data by hour in day and average for each hour
-                x = readings_avg_day.index
-                y = readings_avg_day.light
-                plot_day(x, y,
-                         title=f'Light Data for Average Day in {calendar.month_abbr[month]} for {plant_name} Plant ', ylabel='Light (mmol)')
+                'Enter plant number (1-4) to graph avg light for each month or (q) to quit and show plots: ')
+            try:
+                plant_name, plant_readings = select_plant(
+                    int(num), plant_table, readings_table)
+            except ValueError:
+                break
+            fig, axs = plt.subplots(2, 6)
+            fig.suptitle(
+                f'Light Data for Average Day in Each Month for {plant_name} Plant')
+            for month in np.arange(1, 13):
+                if month in plant_readings.month.values:
+                    # select month of data
+                    plant_data_month = plant_readings.loc[plant_readings.month == month]
+                    # plant_data_month = plant_data_month.reset_index()
+                    readings_avg_day = plant_data_month.groupby(
+                        plant_data_month['datetime'].dt.hour).mean()  # group data by hour in day and average for each hour
+                    x = readings_avg_day.index
+                    y = readings_avg_day.light
+                    axs = plot_day(x, y,
+                                   title=f'{calendar.month_abbr[month]}', ylabel='Light (mmol)', axis=axs, row=(month - 1) // 6, col=(month - 1) % 6)
+            # Hide x labels and tick labels for top plots and y ticks for right plots.
+            for ax in axs.flat:
+                ax.label_outer()
 
     elif entry == 'm':  # Graph of soil moisture data in its entirety for each plant
-        while num not in ['1', '2', '3', '4']:
-            num = input('Enter plant number (1-4) to graph soil moisture: ')
-
-        # TODO - Graph of data soil moisture data showing what happens when the plant is watered
-
         # Find local peaks
         ilocs_min = argrelextrema(
-            readings_table.soil_moist.values, np.less_equal, order=100)[0]  # Searches range of 100 hours (4 days) on both sides for minimum
+            readings_table.soil_moist.values, np.less_equal, order=100)[0]  # Searches range of 50 hours (4 days) on both sides for minimum
         ilocs_max = argrelextrema(
-            readings_table.soil_moist.values, np.greater_equal, order=100)[0]  # Searches range of 100 hours (4 days) on both sides for maximum
+            readings_table.soil_moist.values, np.greater_equal, order=100)[0]  # Searches range of 50 hours (4 days) on both sides for maximum
 
         # Add soil moisture local min and max to table
         readings_table['local_max_moist'] = False
@@ -116,30 +127,37 @@ while entry not in ['a', 'l', 'm' 's']:
         readings_table.loc[readings_table.iloc[ilocs_min].index,
                            'local_min_moist'] = True
 
-        # Create graphs
-        plant_name, plant_readings = select_plant(
-            int(num), plant_table, readings_table)
-        x = plant_readings.datetime[:750]  # plot first 750 hours
-        y = plant_readings.soil_moist[:750]
-        moist_plot = plot_time_series(
-            x, y, title='Soil Moisture Data', ylabel='Soil Moisture (%)')
+        while num != 'q':
+            num = input(
+                'Enter plant number (1-4) to graph soil moisture or (q) to quit and show plots: ')
 
-        # FIXME - plot with datetimes as x axis, not as a series
-        plant_readings[plant_readings['local_max_moist']].soil_moist.plot(
-            style='.', lw=10, color='red', marker="v")  # plot soil moisture point with local max moist 'mask' where local max moist is true
-        plant_readings[plant_readings['local_min_moist']].soil_moist.plot(
-            style='.', lw=10, color='green', marker="^")  # plot soil moisture point with local min moist 'mask' where local min moist is true
+            # Create graphs
+            try:
+                plant_name, plant_readings = select_plant(
+                    int(num), plant_table, readings_table)
 
-        # x = plant_readings.datetime[:750]
+            except ValueError:
+                break
 
-        # y = plant_readings[plant_readings['local_max_moist']].soil_moist[:750]
-        # plt.plot(x, y, style='.', lw=10, color='red', marker="v")
+            x = plant_readings.datetime
+            y = plant_readings.soil_moist
+            title = f'Soil Moisture Data for {plant_name} Plant'
+            fig_1 = plot_time_series(
+                x, y, title, 'Soil Moisture (%)')
 
-        # y = plant_readings[plant_readings['local_min_moist']].soil_moist[:750]
-        # plt.plot(x, y, style='.', lw=10, color='green', marker="^")
+            y = plant_readings[plant_readings['local_max_moist']].soil_moist
+            max_idx = y.index
+            x = plant_readings.datetime[max_idx]
+            plt.scatter(x, y, linewidths=1, c='red',
+                        marker="v", figure=fig_1)
 
-    elif entry == 'g':
-        # TODO - Incorporate global solar radiation for NYC to normalize data based on month
+            y = plant_readings[plant_readings['local_min_moist']].soil_moist
+            min_idx = y.index
+            x = plant_readings.datetime[min_idx]
+            plt.scatter(x, y, linewidths=1, c='green',
+                        marker="^", figure=fig_1)
+
+    elif entry == 'g':  # Incorporate global solar radiation for NYC to normalize data based on month
 
         # Import data from National Solar Radiation Database API
         # https://nsrdb.nrel.gov/data-sets/api-instructions.html
@@ -174,32 +192,113 @@ while entry not in ['a', 'l', 'm' 's']:
             f'1/1/{year}', freq=interval+'Min', periods=525600/int(interval)))
 
         # plot GHI over average month and sum GHI per month
-        month_sum = {}
+        ghi_month_sum = {}
+        fig, axs = plt.subplots(2, 6)
+        fig.suptitle(
+            'Global Horizontal Irradiance for Average Day in Each Month in NYC')
         for month in np.arange(1, 13):
             month_data = df.loc[df.Month == month]
             readings_avg_day = month_data.groupby(
                 month_data.Hour).mean()  # group data by hour in day and average for each hour
             x = readings_avg_day.index
             y = readings_avg_day.GHI
-            plot_day(x, y,
-                     title=f'GHI for Average Day in {calendar.month_abbr[month]}', ylabel='Light (W/m^2)')
+            axs = plot_day(x, y,
+                           title=f'{calendar.month_abbr[month]}', ylabel='Light ($W/m^2$)', axis=axs, row=(month-1)//6, col=(month-1) % 6)
             # Sum GHI for each month
-            month_sum[month] = month_data.GHI.sum()
+            ghi_month_sum[month] = month_data.GHI.sum()
+        # Hide x labels and tick labels for top plots and y ticks for right plots.
+        for ax in axs.flat:
+            ax.label_outer()
 
-    plt.show()
+        # Comparision of light levels before/after move on 12/1/20
+        while num != 'q':
+            num = input(
+                'Enter plant number (1-4) to graph soil moisture or (q) to quit and show plots: ')
+            try:
+                plant_name, plant_readings = select_plant(
+                    int(num), plant_table, readings_table)
+            except ValueError:
+                break
+            plant_month_sum = {}
+            for month in np.arange(1, 13):
+                if month in plant_readings.month.values:
+                    # Grab only data for the month
+                    plant_data_month = plant_readings.loc[plant_readings.month == month]
+                    plant_month_sum[month] = plant_data_month.light.sum()
+            df_ghi_month = pd.DataFrame.from_dict(
+                ghi_month_sum, orient='index')
+            df_plant_month = pd.DataFrame.from_dict(
+                plant_month_sum, orient='index')
+            # Normalize light levels based on GHI for the month
+            df_plant_month_norm = df_plant_month / df_ghi_month
 
+            # Percentage difference before/after 12/1/20
+            before = df_plant_month_norm[7:12].mean()
+            after = (df_plant_month_norm.loc[12] +
+                     df_plant_month_norm.loc[1]) / 2
+            pct_diff = round(((after-before)/before*100)[0])
 
-# TODO - Comparision of light levels before/after move on 12/1/20
+            # Graph of normalized light levels and comparison between before/after 12/1/20
+            x = df_plant_month_norm.index
+            y = df_plant_month_norm[0]
+            fig = plt.figure()
+            plt.bar(x, y, color='orange')
+            plt.xlabel('Month')
+            plt.ylabel('Normalized Light Levels')
+            plt.title(
+                f'Comparison of Light Levels Before & After Move on 12/1/20 for {plant_name}')
+            plt.ylim(0, .5)
+            plt.text(
+                4, .45, f'Difference before/after 12/1/20: {pct_diff}%')
 
-# Normalize light levels based on GHI for the month
+    elif entry == 'w':  # TODO - Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
+        while num != 'q':
+            num = input(
+                'Enter plant number (1-4) to graph soil moisture or (q) to quit and show plots: ')
+            try:
+                plant_name, plant_readings = select_plant(
+                    int(num), plant_table, readings_table)
+            except ValueError:
+                break
 
-# TODO - Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
-# Need to first determine when each plant is watered - use the mean or median of the soil moist reading everytime it is detected that that plant was watered
+            # Clean mins of soil moisture readings by removing all but the first max and min when there are duplicates
+            mask = plant_readings.local_min_moist
+
+            # FIXME - Marks duplicate based on ever seeing it again, but this needs to be done locally in case there are two actual mins of the same value in the future
+            duplicates = plant_readings[mask].duplicated(
+                subset=['soil_moist'], keep='first')
+            plant_readings['local_min_moist_dropped'] = plant_readings['local_min_moist'][mask][duplicates]
+            plant_readings['local_min_moist_dropped'].fillna(
+                False, inplace=True)
+            plant_readings.loc[plant_readings['local_min_moist_dropped'],
+                               'local_min_moist'] = False  # Set duplicate minimums to false
+            plant_readings.drop('local_min_moist_dropped',
+                                axis=1)  # drop uneeded column
+
+            # Determine when each plant is watered - use the mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
+            watering_value = plant_readings[plant_readings.local_min_moist].soil_moist.mean(
+            )
+
+            # Create "days until next watering" target variable by backfilling
+            watering_dates = plant_readings[plant_readings.soil_moist <=
+                                            watering_value].datetime
+            # Set "days until watering" to zero for index positions in watering_dates
+            plant_readings['days_until_watering'] = None
+            plant_readings.loc[watering_dates.index, 'days_until_watering'] = 0
+            # Backfill from zeros
+
+            # Train supervised ML model based on target variable
+
 # Need to look back some length of time to see how much sunlight it has been getting in order to predict how much sun it will get in next few days
+
 # Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
+
 # For purposes of the algorithm, maybe look at avgs/totals for each day?
+
 # Need to scale data first so that all parameters are weighted equally - fit on the trained data, and transform on both train and test - USE PIPELINE
+
 # Arrow of time - everything in test set must occur after training - no shuffling!
+
 # Resource - https://towardsdatascience.com/predictive-maintenance-of-turbofan-engines-ec54a083127
 
 # TODO - For each plant type, compute the avg number of days between watering. Does this vary by season?
@@ -211,3 +310,4 @@ while entry not in ['a', 'l', 'm' 's']:
 # Can use matplotlib and seaborn for histogram graphs:
 #   plt.figure(figsize=(10,6))
 #   sns.distplot(series data, bins=10)
+    plt.show()
