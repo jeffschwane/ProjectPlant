@@ -24,7 +24,7 @@ def plot_time_series(x, y, title, ylabel, figure='None'):
         fig = plt.figure()
     else:
         fig = figure  # FIXME - plot on the same figure
-    plt.plot(x, y)
+    plt.plot(x, y, label=ylabel)
     plt.xlabel('Date')
     plt.ylabel(ylabel)
     plt.title(title)
@@ -67,7 +67,7 @@ entry = 'null'
 num = 'null'
 while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
     entry = input(
-        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture\n(g) for monthly global solar radiation for NYC\n(w) for time between watering\n(s) to skip\n: ')
+        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture and watering\n(g) for monthly global solar radiation for NYC\n(s) to skip\n: ')
 
     if entry == 's':
         break
@@ -127,11 +127,12 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
         readings_table.loc[readings_table.iloc[ilocs_min].index,
                            'local_min_moist'] = True
 
+        # TODO - Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
+
         while num != 'q':
             num = input(
                 'Enter plant number (1-4) to graph soil moisture or (q) to quit and show plots: ')
 
-            # Create graphs
             try:
                 plant_name, plant_readings = select_plant(
                     int(num), plant_table, readings_table)
@@ -139,11 +140,68 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             except ValueError:
                 break
 
+            pd.set_option('mode.chained_assignment', None)
+            # Clean mins of soil moisture readings by removing all but the first max and min when there are duplicate maxs and mins
+            mask = plant_readings.local_min_moist
+
+            # FIXME - Marks duplicate based on ever seeing it again, but this actually needs to be done locally in case there are two actual mins of the same value in the future
+            duplicates = plant_readings.loc[mask].duplicated(
+                subset=['soil_moist'], keep='first')  # Store duplicates in boolean series
+            mask2 = mask & duplicates
+            # Add column to dataframe
+            plant_readings.loc[:,
+                               'local_min_moist_dropped'] = plant_readings.loc[mask2, 'local_min_moist']
+            # Fill in 'None' readings with False
+            plant_readings.fillna(
+                {'local_min_moist_dropped': False}, inplace=True)
+            plant_readings.loc[plant_readings['local_min_moist_dropped'],
+                               'local_min_moist'] = False  # Set duplicate minimums to False
+            plant_readings.drop('local_min_moist_dropped',
+                                axis=1, inplace=True)  # drop uneeded column
+
+            # Determine soil moisture value when each plant is watered - use the mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
+            watering_value = plant_readings.loc[plant_readings.local_min_moist, 'soil_moist'].mean(
+            )
+            # watering_value = 10  # Force watering value to 10% as ideal time to water
+
+            # Create "days until next watering" target variable by backfilling
+
+            # Dates plant should be watered is anytime soil moisture value is less than or equal to watering value
+            watering_dates = plant_readings.loc[plant_readings.soil_moist <=
+                                                watering_value, 'datetime']
+            # Set "days until watering" to zero for index positions in watering_dates
+            plant_readings.loc[:, 'days_until_watering'] = None
+            plant_readings.loc[watering_dates.index, 'days_until_watering'] = 0
+
+            # Backfill from zeros
+            # Set first 'days until watering' value to zero
+            plant_readings.at[plant_readings.first_valid_index(),
+                              'days_until_watering'] = 0
+
+            # Update values in 'days_until_watering'
+            counter = 'zero'
+            for index_label, row_series in plant_readings.iterrows():
+                if row_series[8] != 0:  # 8th position is 'days_until_watering'
+                    counter = 'nonzero'
+                if row_series[8] == 0 and counter == 'nonzero':
+                    counter = 'zero'
+                    backsteps = 1
+                    # Start backfilling either until the next zero is reached, or once it has hit a max. Otherwise model will not learn correctly the plant may have been watered before the soil moisture value hit the watering_value
+                    while plant_readings.loc[index_label - backsteps, 'days_until_watering'] != 0 and plant_readings.loc[index_label - backsteps, 'local_max_moist'] == False:
+                        plant_readings.at[index_label - backsteps,
+                                          'days_until_watering'] = backsteps / 24  # Sets 'days_until_watering' to distance in days from the zero
+                        backsteps += 1
+
+            # Plot soil moisture and days until watering
+            # TODO - Show ideal watering threshold on plot
             x = plant_readings.datetime
             y = plant_readings.soil_moist
             title = f'Soil Moisture Data for {plant_name} Plant'
             fig_1 = plot_time_series(
                 x, y, title, 'Soil Moisture (%)')
+
+            y = plant_readings.days_until_watering
+            plt.plot(x, y, figure=fig_1, label='Days until watering')
 
             y = plant_readings[plant_readings['local_max_moist']].soil_moist
             max_idx = y.index
@@ -156,6 +214,13 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             x = plant_readings.datetime[min_idx]
             plt.scatter(x, y, linewidths=1, c='green',
                         marker="^", figure=fig_1)
+
+            xmin = plant_readings.datetime.iloc[0]
+            xmax = plant_readings.datetime.iloc[-1]
+            plt.hlines(
+                watering_value, xmin, xmax, label='Ideal watering threshold')
+
+            plt.legend()
 
     elif entry == 'g':  # Incorporate global solar radiation for NYC to normalize data based on month
 
@@ -250,42 +315,6 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             plt.ylim(0, .5)
             plt.text(
                 4, .45, f'Difference before/after 12/1/20: {pct_diff}%')
-
-    elif entry == 'w':  # TODO - Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
-        while num != 'q':
-            num = input(
-                'Enter plant number (1-4) to graph soil moisture or (q) to quit and show plots: ')
-            try:
-                plant_name, plant_readings = select_plant(
-                    int(num), plant_table, readings_table)
-            except ValueError:
-                break
-
-            # Clean mins of soil moisture readings by removing all but the first max and min when there are duplicates
-            mask = plant_readings.local_min_moist
-
-            # FIXME - Marks duplicate based on ever seeing it again, but this needs to be done locally in case there are two actual mins of the same value in the future
-            duplicates = plant_readings[mask].duplicated(
-                subset=['soil_moist'], keep='first')
-            plant_readings['local_min_moist_dropped'] = plant_readings['local_min_moist'][mask][duplicates]
-            plant_readings['local_min_moist_dropped'].fillna(
-                False, inplace=True)
-            plant_readings.loc[plant_readings['local_min_moist_dropped'],
-                               'local_min_moist'] = False  # Set duplicate minimums to false
-            plant_readings.drop('local_min_moist_dropped',
-                                axis=1)  # drop uneeded column
-
-            # Determine when each plant is watered - use the mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
-            watering_value = plant_readings[plant_readings.local_min_moist].soil_moist.mean(
-            )
-
-            # Create "days until next watering" target variable by backfilling
-            watering_dates = plant_readings[plant_readings.soil_moist <=
-                                            watering_value].datetime
-            # Set "days until watering" to zero for index positions in watering_dates
-            plant_readings['days_until_watering'] = None
-            plant_readings.loc[watering_dates.index, 'days_until_watering'] = 0
-            # Backfill from zeros
 
             # Train supervised ML model based on target variable
 
