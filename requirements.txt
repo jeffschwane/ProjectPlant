@@ -9,3 +9,5 @@ scipy.signal
 sys
 os
 IPython.display
+sklearn
+seaborn
