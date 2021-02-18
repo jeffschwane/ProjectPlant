@@ -4,12 +4,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import calendar
+import datetime as dt
 import sys
 import os
 from IPython.display import display
 from scipy.signal import argrelextrema
 from scipy.signal import lfilter
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso
+from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
@@ -22,14 +25,14 @@ def select_plant(plant_id, plant_table, readings_table):
     return plant_name, plant_readings
 
 
-def plot_time_series(x, y, title, ylabel, figure='None'):
+def plot_time_series(x, y, title, ylabel, color, figure='None'):
     """Creates time series plots given x and y series data, title and data label for y axis"""
 
     if figure == 'None':
         fig = plt.figure()
     else:
         fig = figure  # FIXME - plot on the same figure
-    plt.plot(x, y, label=ylabel)
+    plt.plot(x, y, label=ylabel, c=color)
     plt.xlabel('Date')
     plt.ylabel(ylabel)
     plt.title(title)
@@ -68,11 +71,12 @@ a = 1
 readings_table.soil_moist = lfilter(b, a, readings_table.soil_moist)
 
 # Ask for user input about graphs
+sns.set_theme()  # Apply default seaborn theme
 entry = 'null'
 num = 'null'
 while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
     entry = input(
-        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture and watering\n(g) for monthly global solar radiation for NYC\n(s) to skip\n: ')
+        'Graphs: Enter \n(a) for all light data for each plant\n(l) for average light data each month\n(m) for soil moisture and watering\n(g) for monthly global solar radiation for NYC and move comparison\n(s) to skip\n: ')
 
     if entry == 's':
         break
@@ -85,7 +89,9 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             y = plant_readings.light
             title = f'Full Light Data for {plant_name} Plant'
             plot_time_series(x, y,
-                             title, ylabel='Light (mmol)')
+                             title, ylabel='Light (mmol)', color='orange')
+            bottom, top = plt.ylim()
+            plt.vlines(dt.date(2020, 12, 1), bottom, top)
 
     # Graph of light data over course of an average day each month for each plant
     elif entry == 'l':
@@ -177,16 +183,16 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                     int(num), plant_table, readings_table)
             except ValueError:
                 break
-            plant_month_sum = {}
+            plant_month_mean = {}
             for month in np.arange(1, 13):
                 if month in plant_readings.month.values:
                     # Grab only data for the month
                     plant_data_month = plant_readings.loc[plant_readings.month == month]
-                    plant_month_sum[month] = plant_data_month.light.sum()
+                    plant_month_mean[month] = plant_data_month.light.mean()
             df_ghi_month = pd.DataFrame.from_dict(
                 ghi_month_sum, orient='index')
             df_plant_month = pd.DataFrame.from_dict(
-                plant_month_sum, orient='index')
+                plant_month_mean, orient='index')
             # Normalize light levels based on GHI for the month
             df_plant_month_norm = df_plant_month / df_ghi_month
 
@@ -202,12 +208,13 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             fig = plt.figure()
             plt.bar(x, y, color='orange')
             plt.xlabel('Month')
-            plt.ylabel('Normalized Light Levels')
+            plt.ylabel('Normalized Relative Light Levels')
+            plt.yticks([])
             plt.title(
                 f'Comparison of Light Levels Before & After Move on 12/1/20 for {plant_name}')
-            plt.ylim(0, .5)
+            bottom, top = plt.ylim()
             plt.text(
-                4, .45, f'Difference before/after 12/1/20: {pct_diff}%')
+                4, .9*top, f'Difference before/after 12/1/20: {pct_diff}%')
 
             # Train supervised ML model based on target variable
 
@@ -228,7 +235,7 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
         readings_table.loc[readings_table.iloc[ilocs_min].index,
                            'local_min_moist'] = True
 
-        # TODO - Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
+        # Learning algorithm that determines based on current soil moist, sunlight plant has been receiving and avg. temperature when it is next expected to need water
 
         while num != 'q':
             num = input(
@@ -260,12 +267,14 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             plant_readings.drop('local_min_moist_dropped',
                                 axis=1, inplace=True)  # drop uneeded column
 
-            # Determine soil moisture value when each plant is watered - use the mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
-            # watering_value = plant_readings.loc[plant_readings.local_min_moist, 'soil_moist'].mean(
+            # Determine soil moisture value when each plant is watered
+            # Mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
+            # avg_time_between_watering = plant_readings.loc[plant_readings.local_min_moist, 'soil_moist'].mean(
             # )
-            # watering_value += 2  # Adds 2% to watering value in order to capture more watering times and increase size of target variable set
+            # print(
+            #     f'The average time between watering for {plant_name} is {avg_time_between_watering}')
 
-            # Use values stored in SQL table
+            # Use values stored in SQL table to determine when each plant should be watered
             watering_value = plant_table.loc[int(num), 'soil_moist_min']
 
             # Create "days until next watering" target variable by backfilling
@@ -309,10 +318,11 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             y = plant_readings.soil_moist
             title = f'Soil Moisture Data for {plant_name} Plant'
             fig_1 = plot_time_series(
-                x, y, title, 'Soil Moisture (%)')
+                x, y, title, 'Soil Moisture (%)', color='blue')
 
             y = plant_readings.days_until_watering
-            plt.plot(x, y, figure=fig_1, label='Days until watering')
+            plt.plot(x, y, figure=fig_1,
+                     label='Days until watering', color='orange')
 
             y = plant_readings[plant_readings['local_max_moist']].soil_moist
             max_idx = y.index
@@ -362,7 +372,7 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # y = plant_readings.temp
             # plt.plot(x, y)
             # plt.xlabel('Days Until Watering')
-            # plt.ylabel('Temperature (℃)')
+            # plt.ylabel('Temperature (deg C)')
             # plt.title(
             #     f'Temperature vs. Days Until Watering for {plant_name} Plant')
 
@@ -372,21 +382,33 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # y = plant_readings.soil_fert
             # plt.plot(x, y)
             # plt.xlabel('Days Until Watering')
-            # plt.ylabel('Soil Fertility (μs/cm)')
+            # plt.ylabel('Soil Fertility (μS/cm)')
             # plt.title(
             #     f'Soil Fertility vs. Days Until Watering for {plant_name} Plant')
 
-            # # Create column for rolling sum of light to analyze if that affects days until watering
-            # plant_readings['light_roll'] = plant_readings.light.rolling(
-            #     72).sum()
+            # Create column for rolling sum of light to analyze if that affects days until watering
+            plant_readings['light_roll'] = plant_readings.light.rolling(
+                96).sum()
             # fig_6 = plt.figure()
             # x = plant_readings.days_until_watering
             # y = plant_readings.light_roll
             # plt.plot(x, y)
             # plt.xlabel('Days Until Watering')
-            # plt.ylabel('Light Received Over Past 3 Days')
+            # plt.ylabel('Light Received Over Past 6 Days')
             # plt.title(
             #     f'Past Light Received vs. Days Until Watering for {plant_name} Plant')
+
+            # Create column for rolling sum of temperature to analyze if that affects days until watering
+            plant_readings['temp_roll'] = plant_readings.temp.rolling(
+                96).mean()
+            # fig_7 = plt.figure()
+            # x = plant_readings.days_until_watering
+            # y = plant_readings.temp_roll
+            # plt.plot(x, y)
+            # plt.xlabel('Days Until Watering')
+            # plt.ylabel('Average Temperature Over Past 6 Days')
+            # plt.title(
+            #     f'Past Temperature vs. Days Until Watering for {plant_name} Plant')
 
             # Create Dummy Model which uses the average time between waterings to predict days until watering
             plant_readings.loc[:, 'dummy_days_until_watering'] = None
@@ -426,13 +448,19 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # Fit linear Regression Model
 
             # Drop rows where days until watering coudn't be calculated due to soil mosisture never reaching watering threshold before getting watered
-            df = plant_readings.dropna(subset=['days_until_watering'])
+            df = plant_readings.dropna(
+                subset=['days_until_watering', 'light_roll', 'temp_roll'])
+            df.set_index('datetime', inplace=True)
+
             X = df.loc[:, ['light', 'soil_moist', 'temp', 'soil_fert']]
+            # # uses rolling sums/avgs for light and temp
+            # X = df.loc[:, ['light_roll',
+            #                'soil_moist', 'temp_roll', 'soil_fert']]
             y = df.loc[:, 'days_until_watering']
             y_dumb = df.loc[:, 'dummy_days_until_watering']
             # Arrow of time - everything in test set must occur after training - no shuffling!
             X_train, X_test, y_train, y_test, y_dumb_train, y_dumb_test = train_test_split(
-                X, y, y_dumb, test_size=0.3, shuffle=False)
+                X, y, y_dumb, test_size=0.35, shuffle=False)
 
             # Scale the training data with fit transform, and the testing data with transform only, so that each parameter counts equally toward learning
             scaler = StandardScaler()
@@ -440,27 +468,35 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             X_test_scaled = scaler.transform(X_test)
 
             reg = LinearRegression()
+            # reg = Lasso()
             reg.fit(X_train_scaled, y_train)
             y_pred = reg.predict(X_test_scaled)
 
             reg_score = mean_squared_error(y_test, y_pred)
             dummy_score = mean_squared_error(y_test, y_dumb_test)
 
-            print(f"The MSE for our regressor is:{reg_score}")
-            print(f"The MSE for our dummy is:{dummy_score}")
+            print(
+                f"The MSE for {plant_name} for the average days between watering ({round(avg_days_between_watering)} days) is:  {round(dummy_score, 1)}")
+            print(
+                f"The MSE for {plant_name} for the regression model is:  {round(reg_score, 1)}\n")
 
-            # TODO - Try adding in rolling sum of light to see if that improves model
+            # Plot predicted vs. acutal on the same plot
 
-            # For purposes of the algorithm, maybe look at avgs/totals for each day?
+            x = y_test.index
+            title = f'Predicted vs. Actual Days Until Watering for {plant_name} Plant'
+            fig_1 = plot_time_series(
+                x, y_pred, title, 'Predicted days Until Watering', color='red')
 
-            # Need to scale data first so that all parameters are weighted equally - fit on the trained data, and transform on both train and test - USE PIPELINE
+            plt.scatter(x, y_test, figure=fig_1,
+                        label='Actual days until watering', color='black', s=1)
+            plt.legend()
+
+            # TODO - Look up pipeline - Need to scale data first so that all parameters are weighted equally - fit on the trained data, and transform on both train and test - USE PIPELINE
 
             # Resource - https://towardsdatascience.com/predictive-maintenance-of-turbofan-engines-ec54a083127
 
 
-# TODO - Need to look back some length of time to see how much sunlight it has been getting in order to predict how much sun it will get in next few days
-
-# TODO - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
+# TODO - Forward-looking sunlight prediction - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
 
 
 # TODO - For each plant type, compute the avg number of days between watering. Does this vary by season?
@@ -469,7 +505,6 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
 # https://www.houseplantjournal.com/bright-indirect-light-requirements-by-plant/
 # Calculate % of daylight hours that plant is getting light above thresholds
 
-# Can use matplotlib and seaborn for histogram graphs:
-#   plt.figure(figsize=(10,6))
-#   sns.distplot(series data, bins=10)
+# TODO - Question: Are there any other metrics to measure against the regression other than MSE? We learned a lot with classification
+
 plt.show()
