@@ -20,11 +20,7 @@ I would like to get data insights from the plant sensors, and answer questions s
 
 
 ## Dataset
-The dataset I will be using is from four *North Connected Home Plant Monitor sensors*, which have actively been collecting data in houseplants located in my apartment in Brooklyn, NY since May 15, 2020. The sensors store data locally, which is pushed to the phone via bluetooth when an app syncs with the sensors. Though the sensors collect hourly data, if enough time lapses between syncs, sensor data can be overwritten due to limited memory. Therefore, the data is not contiguous. I am able to export the data to CSV files to work with python. Each sensor collects four different measurements every hour:
-- light
-- soil moisture
-- temperature
-- soil fertility
+The dataset I will be using is from four *North Connected Home Plant Monitor sensors*, which have actively been collecting data in houseplants located in my apartment in Brooklyn, NY since May 15, 2020. The sensors store data locally, which is pushed to the phone via bluetooth when an app syncs with the sensors. Though the sensors collect hourly data, if enough time lapses between syncs, sensor data can be overwritten due to limited memory. Therefore, the data is not contiguous. I am able to export the data to CSV files to work with python.
 
 ## Solution Statement
 My solution to the problem is to input the data into a pandas dataframe and use matplotlib to create graphs to analyze the data. I will use a linear regression model based on a training dataset where I label “days until watering” based on the past data when I know I have watered. It should be easy to see this in the past data by analyzing the soil moisture readings. Every time I actually went ahead and watered a monitored plant in the past, I will see a spike from say 5% soil moisture to ~40% soil moisture within one hour. I know that I did a pretty good job of watering it when it actually needed water since I use a separate analog soil moisture meter to probe the depth of the soil and make sure things were dry enough before I watered again. So all I have to do is take the mean of all the local minimums of the soil moisture readings for any given plant to get a good indicator about when it should be watered based on the soil moisture sensor readings.
