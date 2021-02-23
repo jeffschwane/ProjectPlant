@@ -1,4 +1,5 @@
 # ProjectPlant
+This is the capstone project of the online [Python Data Science and Machine Learning course](https://codingnomads.co/courses/data-science-machine-learning-course?portfolioCats=3) by CodingNomads.
 
 ## Background
 Over the course of the pandemic and quarantine, I’ve gotten more passionate about houseplants - collecting them and giving them their optimal growing conditions to make for a beautiful environment. Over the past year or so, I’ve learned which plants need the most light and the best placement for that, how frequently which plants need water, fertilizer, etc. However, it is a constant learning process, and by collecting data, it can take a bit of the guesswork around proper care. For the beginner houseplant owner, getting to this level of knowledge can be daunting and often involves killing many plants before getting it right. For instance overwatering plants and leaving them sitting in soggy soil is usually the #1 killer of plants, since it can lead to the growth of harmful microorganisms and root rot.
@@ -44,4 +45,7 @@ The baseline I want to beat in order to determine the project is a success is to
 1. Mean-squared error
 2. Mean-absolute Error
 3. R-squared
+
+## Requirements
+Python external libraries are documented in the requirements.txt file. I also used Python 3.8.3 and MySQL Workbench 8.0.
 
