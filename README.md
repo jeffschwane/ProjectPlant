@@ -47,5 +47,8 @@ The baseline I want to beat in order to determine the project is a success is to
 3. R-squared
 
 ## Requirements
-Python external libraries are documented in the requirements.txt file. I also used Python 3.8.3 and MySQL Workbench 8.0.
+- Python external libraries are documented in the requirements.txt file
+- I used Python 3.8.3 and MySQL Workbench 8.0
+- Set up API access to the [National Solar Radiation Database](https://nsrdb.nrel.gov/data-sets/api-instructions.html)
+- API keys and SQL password are stored in a .env file as environment variables
 
