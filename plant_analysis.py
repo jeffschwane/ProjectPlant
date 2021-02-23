@@ -31,7 +31,7 @@ def plot_time_series(x, y, title, ylabel, color, figure='None'):
     if figure == 'None':
         fig = plt.figure()
     else:
-        fig = figure  # FIXME - plot on the same figure
+        fig = figure  # plot on the same figure
     plt.plot(x, y, label=ylabel, c=color)
     plt.xlabel('Date')
     plt.ylabel(ylabel)
@@ -51,8 +51,9 @@ def plot_day(x, y, row, col, axis, title, ylabel):
 
 
 # Connect to local SQL database
+sql_pass = os.environ['sql_password']
 engine = sqlalchemy.create_engine(
-    "mysql+pymysql://root:plant-outside-123-World@localhost/plant_data")
+    f"mysql+pymysql://root:{sql_pass}@localhost/plant_data")
 connection = engine.connect()
 
 # Load SQL data into pandas DataFrames
@@ -82,6 +83,9 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
         break
 
     elif entry == 'a':  # Graph of light data in its entirety for each plant
+        while num not in ['m', 'r']:
+            num = input(
+                '\nPlot data showing:\n(m) for before/after move \n(r) light requirement \n: ')
         for plant_id in readings_table.plant_id.unique():
             plant_name, plant_readings = select_plant(
                 plant_id, plant_table, readings_table)
@@ -90,8 +94,29 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             title = f'Full Light Data for {plant_name} Plant'
             plot_time_series(x, y,
                              title, ylabel='Light (mmol)', color='orange')
-            bottom, top = plt.ylim()
-            plt.vlines(dt.date(2020, 12, 1), bottom, top)
+            if num == 'm':
+                bottom, top = plt.ylim()
+                plt.vlines(dt.date(2020, 12, 1), bottom, top)
+
+            elif num == 'r':
+                # Calculate % of prime daylight hours (8am-5pm) that plant is getting light above min thresholds
+                mask = (plant_readings['datetime'].dt.hour >= 8) & (
+                    plant_readings['datetime'].dt.hour <= 17)  # Grab values between 8am and 5pm
+                plant_light_min = plant_table.loc[plant_id, 'light_min']
+                light_above_threshold_pct = plant_readings.groupby(mask)['light'].apply(
+                    lambda c: (c > plant_light_min).sum() / len(c)
+                )[True]
+                xmin = plant_readings.datetime.iloc[0]
+                xmax = plant_readings.datetime.iloc[-1]
+                xtext = plant_readings.datetime.iloc[int(
+                    .65*len(plant_readings.datetime))]
+                plt.hlines(
+                    plant_light_min, xmin, xmax, label='Average watering threshold')
+                bottom, top = plt.ylim()
+                plt.text(
+                    xtext, plant_light_min - .1*plant_light_min, f'Min. light threshold')
+                plt.text(
+                    xmin, .7*top, f'Percentage of prime daylight hours (8am-5pm) \nthat plant receives light above min threshold: {round(light_above_threshold_pct*100)}%')
 
     # Graph of light data over course of an average day each month for each plant
     elif entry == 'l':
@@ -107,16 +132,15 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             fig.suptitle(
                 f'Light Data for Average Day in Each Month for {plant_name} Plant')
             for month in np.arange(1, 13):
-                if month in plant_readings.month.values:
-                    # select month of data
-                    plant_data_month = plant_readings.loc[plant_readings.month == month]
-                    # plant_data_month = plant_data_month.reset_index()
-                    readings_avg_day = plant_data_month.groupby(
-                        plant_data_month['datetime'].dt.hour).mean()  # group data by hour in day and average for each hour
-                    x = readings_avg_day.index
-                    y = readings_avg_day.light
-                    axs = plot_day(x, y,
-                                   title=f'{calendar.month_abbr[month]}', ylabel='Light (mmol)', axis=axs, row=(month - 1) // 6, col=(month - 1) % 6)
+                # select month of data
+                plant_data_month = plant_readings.loc[plant_readings.month == month]
+                # plant_data_month = plant_data_month.reset_index()
+                readings_avg_day = plant_data_month.groupby(
+                    plant_data_month['datetime'].dt.hour).mean()  # group data by hour in day and average for each hour
+                x = readings_avg_day.index
+                y = readings_avg_day.light
+                axs = plot_day(x, y,
+                               title=f'{calendar.month_abbr[month]}', ylabel='Light (mmol)', axis=axs, row=(month - 1) // 6, col=(month - 1) % 6)
             # Hide x labels and tick labels for top plots and y ticks for right plots.
             for ax in axs.flat:
                 ax.label_outer()
@@ -203,6 +227,8 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             pct_diff = round(((after-before)/before*100)[0])
 
             # Graph of normalized light levels and comparison between before/after 12/1/20
+            months = [calendar.month_abbr[i] for i in range(1, 13)]
+            df_plant_month_norm.index = months
             x = df_plant_month_norm.index
             y = df_plant_month_norm[0]
             fig = plt.figure()
@@ -355,6 +381,7 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # plt.xlabel('Days Until Watering')
             # plt.ylabel('Light (mmol)')
             # plt.title(f'Light vs. Days Until Watering for {plant_name} Plant')
+            # plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
 
             # # Plot soil moisture vs. days until watering
             # fig_3 = plt.figure()
@@ -365,8 +392,9 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # plt.ylabel('Soil Moisture (%)')
             # plt.title(
             #     f'Soil Moisture vs. Days Until Watering for {plant_name} Plant')
+            # plt.xlim(max(filter(None.__ne__, x)), 0) # reverse x-axis
 
-            # # Plot soil temperature vs. days until watering
+            # # Plot temperature vs. days until watering
             # fig_4 = plt.figure()
             # x = plant_readings.days_until_watering
             # y = plant_readings.temp
@@ -385,6 +413,7 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # plt.ylabel('Soil Fertility (μS/cm)')
             # plt.title(
             #     f'Soil Fertility vs. Days Until Watering for {plant_name} Plant')
+            # plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
 
             # Create column for rolling sum of light to analyze if that affects days until watering
             plant_readings['light_roll'] = plant_readings.light.rolling(
@@ -397,18 +426,20 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # plt.ylabel('Light Received Over Past 6 Days')
             # plt.title(
             #     f'Past Light Received vs. Days Until Watering for {plant_name} Plant')
+            # plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
 
             # Create column for rolling sum of temperature to analyze if that affects days until watering
             plant_readings['temp_roll'] = plant_readings.temp.rolling(
                 96).mean()
-            # fig_7 = plt.figure()
-            # x = plant_readings.days_until_watering
-            # y = plant_readings.temp_roll
-            # plt.plot(x, y)
-            # plt.xlabel('Days Until Watering')
-            # plt.ylabel('Average Temperature Over Past 6 Days')
-            # plt.title(
-            #     f'Past Temperature vs. Days Until Watering for {plant_name} Plant')
+            fig_7 = plt.figure()
+            x = plant_readings.days_until_watering
+            y = plant_readings.temp_roll
+            plt.plot(x, y)
+            plt.xlabel('Days Until Watering')
+            plt.ylabel('Average Temperature Over Past 6 Days')
+            plt.title(
+                f'Past Temperature vs. Days Until Watering for {plant_name} Plant')
+            plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
 
             # Create Dummy Model which uses the average time between waterings to predict days until watering
             plant_readings.loc[:, 'dummy_days_until_watering'] = None
@@ -491,20 +522,9 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                         label='Actual days until watering', color='black', s=1)
             plt.legend()
 
-            # TODO - Look up pipeline - Need to scale data first so that all parameters are weighted equally - fit on the trained data, and transform on both train and test - USE PIPELINE
-
-            # Resource - https://towardsdatascience.com/predictive-maintenance-of-turbofan-engines-ec54a083127
-
 
 # TODO - Forward-looking sunlight prediction - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
 
-
-# TODO - For each plant type, compute the avg number of days between watering. Does this vary by season?
-
-# TODO - Is each plant getting the light it needs? Compare to min/max levels
-# https://www.houseplantjournal.com/bright-indirect-light-requirements-by-plant/
-# Calculate % of daylight hours that plant is getting light above thresholds
-
-# TODO - Question: Are there any other metrics to measure against the regression other than MSE? We learned a lot with classification
+# TODO - Other metrics to measure against the regression other than MSE
 
 plt.show()

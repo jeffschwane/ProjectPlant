@@ -1,3 +1,4 @@
+import os
 import csv
 import codecs
 import re
@@ -69,8 +70,9 @@ with codecs.open(file, 'rU', 'utf-16') as f:
 # Store data into local database via tables
 
 # Connect to local database
+sql_pass = os.environ['sql_password']
 engine = sqlalchemy.create_engine(
-    "mysql+pymysql://root:plant-outside-123-World@localhost/plant_data")
+    f"mysql+pymysql://root:{sql_pass}@localhost/plant_data")
 connection = engine.connect()
 metadata = sqlalchemy.MetaData()
 
