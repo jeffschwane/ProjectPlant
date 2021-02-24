@@ -16,6 +16,8 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import r2_score
 
 
 def select_plant(plant_id, plant_table, readings_table):
@@ -48,6 +50,20 @@ def plot_day(x, y, row, col, axis, title, ylabel):
     axis[row, col].set_xticks(np.arange(0, 25, 3))
     axis[row, col].set_ylim(0, 1000)
     return axis
+
+
+def return_score(y_test, y_pred, y_dumb_test, metric):
+    """Returns the regression scores for the regression and dummy model for the metric type used: MSE, MAE, or r2"""
+    if metric == 'MSE':
+        reg_score = mean_squared_error(y_test, y_pred)
+        dummy_score = mean_squared_error(y_test, y_dumb_test)
+    elif metric == 'MAE':
+        reg_score = mean_absolute_error(y_test, y_pred)
+        dummy_score = mean_absolute_error(y_test, y_dumb_test)
+    elif metric == 'r2':
+        reg_score = r2_score(y_test, y_pred)
+        dummy_score = r2_score(y_test, y_dumb_test)
+    return reg_score, dummy_score
 
 
 # Connect to local SQL database
@@ -431,15 +447,15 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             # Create column for rolling sum of temperature to analyze if that affects days until watering
             plant_readings['temp_roll'] = plant_readings.temp.rolling(
                 96).mean()
-            fig_7 = plt.figure()
-            x = plant_readings.days_until_watering
-            y = plant_readings.temp_roll
-            plt.plot(x, y)
-            plt.xlabel('Days Until Watering')
-            plt.ylabel('Average Temperature Over Past 6 Days')
-            plt.title(
-                f'Past Temperature vs. Days Until Watering for {plant_name} Plant')
-            plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
+            # fig_7 = plt.figure()
+            # x = plant_readings.days_until_watering
+            # y = plant_readings.temp_roll
+            # plt.plot(x, y)
+            # plt.xlabel('Days Until Watering')
+            # plt.ylabel('Average Temperature Over Past 6 Days')
+            # plt.title(
+            #     f'Past Temperature vs. Days Until Watering for {plant_name} Plant')
+            # plt.xlim(max(filter(None.__ne__, x)), 0)  # reverse x-axis
 
             # Create Dummy Model which uses the average time between waterings to predict days until watering
             plant_readings.loc[:, 'dummy_days_until_watering'] = None
@@ -503,13 +519,17 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
             reg.fit(X_train_scaled, y_train)
             y_pred = reg.predict(X_test_scaled)
 
-            reg_score = mean_squared_error(y_test, y_pred)
-            dummy_score = mean_squared_error(y_test, y_dumb_test)
+            # reg_score = mean_squared_error(y_test, y_pred)
+            # dummy_score = mean_squared_error(y_test, y_dumb_test)
+
+            metric = 'r2'
+            reg_score, dummy_score = return_score(
+                y_test, y_pred, y_dumb_test, metric=metric)
 
             print(
-                f"The MSE for {plant_name} for the average days between watering ({round(avg_days_between_watering)} days) is:  {round(dummy_score, 1)}")
+                f"The {metric} for {plant_name} for the average days between watering ({round(avg_days_between_watering)} days) is:  {round(dummy_score, 2)}")
             print(
-                f"The MSE for {plant_name} for the regression model is:  {round(reg_score, 1)}\n")
+                f"The {metric} for {plant_name} for the regression model is:  {round(reg_score, 2)}\n")
 
             # Plot predicted vs. acutal on the same plot
 
@@ -525,6 +545,5 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
 
 # TODO - Forward-looking sunlight prediction - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
 
-# TODO - Other metrics to measure against the regression other than MSE
 
 plt.show()
