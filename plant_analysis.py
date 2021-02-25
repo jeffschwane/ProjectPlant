@@ -8,16 +8,11 @@ import datetime as dt
 import sys
 import os
 from IPython.display import display
-from scipy.signal import argrelextrema
-from scipy.signal import lfilter
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import Lasso
-from sklearn.linear_model import Ridge
+from scipy.signal import argrelextrema, lfilter
+from sklearn.linear_model import LinearRegression, Lasso, Ridge
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import mean_absolute_error
-from sklearn.metrics import r2_score
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
 def select_plant(plant_id, plant_table, readings_table):
@@ -499,10 +494,12 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                 subset=['days_until_watering', 'light_roll', 'temp_roll'])
             df.set_index('datetime', inplace=True)
 
-            X = df.loc[:, ['light', 'soil_moist', 'temp', 'soil_fert']]
+            # X = df.loc[:, ['light', 'soil_moist',
+            #                'temp', 'soil_fert']]  # 4 features
+            # X = df.loc[:, ['soil_moist', 'soil_fert']]  # 2 best features
             # # uses rolling sums/avgs for light and temp
-            # X = df.loc[:, ['light_roll',
-            #                'soil_moist', 'temp_roll', 'soil_fert']]
+            X = df.loc[:, ['light_roll',
+                           'soil_moist', 'temp_roll', 'soil_fert']]
             y = df.loc[:, 'days_until_watering']
             y_dumb = df.loc[:, 'dummy_days_until_watering']
             # Arrow of time - everything in test set must occur after training - no shuffling!
@@ -516,13 +513,11 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
 
             reg = LinearRegression()
             # reg = Lasso()
+            # reg = Ridge()
             reg.fit(X_train_scaled, y_train)
             y_pred = reg.predict(X_test_scaled)
 
-            # reg_score = mean_squared_error(y_test, y_pred)
-            # dummy_score = mean_squared_error(y_test, y_dumb_test)
-
-            metric = 'r2'
+            metric = 'r2'  # Input MSE, MAE, or r2
             reg_score, dummy_score = return_score(
                 y_test, y_pred, y_dumb_test, metric=metric)
 
