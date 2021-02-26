@@ -11,8 +11,9 @@ from IPython.display import display
 from scipy.signal import argrelextrema, lfilter
 from sklearn.linear_model import LinearRegression, Lasso, Ridge
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.model_selection import train_test_split, TimeSeriesSplit, learning_curve
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from plotting import plot_learning_curve
 
 
 def select_plant(plant_id, plant_table, readings_table):
@@ -305,6 +306,7 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                                 axis=1, inplace=True)  # drop uneeded column
 
             # Determine soil moisture value when each plant is watered
+
             # Mean of the soil moist reading everytime it is detected that that plant was watered (mean of soil_moist_min)
             # avg_time_between_watering = plant_readings.loc[plant_readings.local_min_moist, 'soil_moist'].mean(
             # )
@@ -494,12 +496,12 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                 subset=['days_until_watering', 'light_roll', 'temp_roll'])
             df.set_index('datetime', inplace=True)
 
-            # X = df.loc[:, ['light', 'soil_moist',
-            #                'temp', 'soil_fert']]  # 4 features
+            X = df.loc[:, ['light', 'soil_moist',
+                           'temp', 'soil_fert']]  # 4 features
             # X = df.loc[:, ['soil_moist', 'soil_fert']]  # 2 best features
             # # uses rolling sums/avgs for light and temp
-            X = df.loc[:, ['light_roll',
-                           'soil_moist', 'temp_roll', 'soil_fert']]
+            # X = df.loc[:, ['light_roll',
+            #                'soil_moist', 'temp_roll', 'soil_fert']]
             y = df.loc[:, 'days_until_watering']
             y_dumb = df.loc[:, 'dummy_days_until_watering']
             # Arrow of time - everything in test set must occur after training - no shuffling!
@@ -537,8 +539,12 @@ while entry not in ['a', 'l', 'm', 'g', 'w', 's']:
                         label='Actual days until watering', color='black', s=1)
             plt.legend()
 
+            # Plot learning curve
+            tscv = TimeSeriesSplit(n_splits=10)
+            plot_learning_curve(reg, X, y, cv=tscv,
+                                train_sizes=np.linspace(0.1, 1.0, 10), scoring='neg_mean_squared_error')
 
-# TODO - Forward-looking sunlight prediction - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
+            # TODO - Forward-looking sunlight prediction - Connect to weather prediction API (sunny/cloudy) for light predictions? Correlate to light detected in training data
 
 
 plt.show()
