@@ -35,132 +35,135 @@ def insert_data_sql(dates_array, data, plant_id, last_import_date):
     result = connection.execute(query)
 
 
-# Query user for file
-file = input('Enter filename to read/update (.csv): ')
+if __name__ == '__main__':  # Returns false during an import which prevents the following code from getting executed during testing
 
-# Open and read-in the exported plant data
-data = []
-plant_dates = {}
-last_date_data = {}
-title_row = 'null'
-start_row = 5
-with codecs.open(file, 'rU', 'utf-16') as f:
-    csv_reader = csv.reader(f, delimiter='\t')
-    for row_index, row in enumerate(csv_reader):
-        try:
-            if 'Flower Care' in row[0]:
-                title_row = row_index + 1  # then the next line contains the table title
-                start_row = row_index + 3  # the following 3rd line contains the start of the data
-        except IndexError:  # necessary since some rows contain no data in columns
-            pass
-        if row_index == title_row:  # store plant names, dates, and last date in the data
-            plant_name = row[0]
-            dates = ' '.join(row[1::4]).split()  # dates occur every fourth row
-            dates.pop()  # Remove last date so that last date has 24 hours
-            # Convert to date objects
-            dates = [dt.datetime.strptime(
-                date, '%Y-%m-%d').date() for date in dates]
-            last_date_data[plant_name] = dates[-1]
-            plant_dates[plant_name] = dates  # Store as dictionary
-        elif row_index >= start_row:
-            # Clean by replacing "--" elements with zeros
-            row[:] = [0 if x == '--' else x for x in row]
-            data.append(row)
+    # Query user for file
+    file = input('Enter filename to read/update (.csv): ')
 
-# Store data into local database via tables
+    # Open and read-in the exported plant data
+    data = []
+    plant_dates = {}
+    last_date_data = {}
+    title_row = 'null'
+    start_row = 5
+    with codecs.open(file, 'rU', 'utf-16') as f:
+        csv_reader = csv.reader(f, delimiter='\t')
+        for row_index, row in enumerate(csv_reader):
+            try:
+                if 'Flower Care' in row[0]:
+                    title_row = row_index + 1  # then the next line contains the table title
+                    start_row = row_index + 3  # the following 3rd line contains the start of the data
+            except IndexError:  # necessary since some rows contain no data in columns
+                pass
+            if row_index == title_row:  # store plant names, dates, and last date in the data
+                plant_name = row[0]
+                # dates occur every fourth row
+                dates = ' '.join(row[1::4]).split()
+                dates.pop()  # Remove last date so that last date has 24 hours
+                # Convert to date objects
+                dates = [dt.datetime.strptime(
+                    date, '%Y-%m-%d').date() for date in dates]
+                last_date_data[plant_name] = dates[-1]
+                plant_dates[plant_name] = dates  # Store as dictionary
+            elif row_index >= start_row:
+                # Clean by replacing "--" elements with zeros
+                row[:] = [0 if x == '--' else x for x in row]
+                data.append(row)
 
-# Connect to local database
-sql_pass = os.environ['sql_password']
-engine = sqlalchemy.create_engine(
-    f"mysql+pymysql://root:{sql_pass}@localhost/plant_data")
-connection = engine.connect()
-metadata = sqlalchemy.MetaData()
+    # Store data into local database via tables
 
-# Create new tables to store plant data
-plant_table = sqlalchemy.Table('plants', metadata,
-                               sqlalchemy.Column(
-                                   'id', sqlalchemy.Integer(), primary_key=True),
-                               sqlalchemy.Column(
-                                   'name_common', sqlalchemy.String(100), nullable=False),
-                               sqlalchemy.Column(
-                                   'name_latin', sqlalchemy.String(100)),
-                               sqlalchemy.Column(
-                                   'soil_moist_min', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'soil_moist_max', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'soil_fert_min', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'soil_fert_max', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'light_min', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'light_max', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'temp_min', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'temp_max', sqlalchemy.Numeric()),
-                               sqlalchemy.Column(
-                                   'last_import_date', sqlalchemy.Date()
-                               ))
-readings_table = sqlalchemy.Table('readings', metadata,
-                                  sqlalchemy.Column(
-                                      'plant_id', sqlalchemy.Integer(), primary_key=True),
-                                  sqlalchemy.Column(
-                                      'datetime', sqlalchemy.DateTime(), primary_key=True),
-                                  sqlalchemy.Column(
-                                      'light', sqlalchemy.Integer()),
-                                  sqlalchemy.Column(
-                                      'soil_moist', sqlalchemy.Integer()),
-                                  sqlalchemy.Column(
-                                      'soil_fert', sqlalchemy.Integer()),
-                                  sqlalchemy.Column(
-                                      'temp', sqlalchemy.Integer()),
-                                  )
+    # Connect to local database
+    sql_pass = os.environ['sql_password']
+    engine = sqlalchemy.create_engine(
+        f"mysql+pymysql://root:{sql_pass}@localhost/plant_data")
+    connection = engine.connect()
+    metadata = sqlalchemy.MetaData()
 
-# Execute table creation
-metadata.create_all(engine)
+    # Create new tables to store plant data
+    plant_table = sqlalchemy.Table('plants', metadata,
+                                   sqlalchemy.Column(
+                                       'id', sqlalchemy.Integer(), primary_key=True),
+                                   sqlalchemy.Column(
+                                       'name_common', sqlalchemy.String(100), nullable=False),
+                                   sqlalchemy.Column(
+                                       'name_latin', sqlalchemy.String(100)),
+                                   sqlalchemy.Column(
+                                       'soil_moist_min', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'soil_moist_max', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'soil_fert_min', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'soil_fert_max', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'light_min', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'light_max', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'temp_min', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'temp_max', sqlalchemy.Numeric()),
+                                   sqlalchemy.Column(
+                                       'last_import_date', sqlalchemy.Date()
+                                   ))
+    readings_table = sqlalchemy.Table('readings', metadata,
+                                      sqlalchemy.Column(
+                                          'plant_id', sqlalchemy.Integer(), primary_key=True),
+                                      sqlalchemy.Column(
+                                          'datetime', sqlalchemy.DateTime(), primary_key=True),
+                                      sqlalchemy.Column(
+                                          'light', sqlalchemy.Integer()),
+                                      sqlalchemy.Column(
+                                          'soil_moist', sqlalchemy.Integer()),
+                                      sqlalchemy.Column(
+                                          'soil_fert', sqlalchemy.Integer()),
+                                      sqlalchemy.Column(
+                                          'temp', sqlalchemy.Integer()),
+                                      )
 
-# Select last import date from database for each plant
-query = sqlalchemy.select(
-    [plant_table.columns.name_common, plant_table.columns.last_import_date])
-result_proxy = connection.execute(query)
-result_set = result_proxy.fetchall()
+    # Execute table creation
+    metadata.create_all(engine)
 
-# Store last import dates as dictionary, store plant names
-last_import_date = {}
-sql_plant_list = []
-for plant in result_set:
-    last_import_date[plant[0]] = plant[1]
-    sql_plant_list.append(plant[0])
+    # Select last import date from database for each plant
+    query = sqlalchemy.select(
+        [plant_table.columns.name_common, plant_table.columns.last_import_date])
+    result_proxy = connection.execute(query)
+    result_set = result_proxy.fetchall()
 
-# Insert plant data into database tables
-num_columns = 4  # four columns of sensor data
-plant_id = 0
-for plant_name, dates_array in plant_dates.items():
-    common_name = plant_name[0:plant_name.find('(') - 1]
-    latin_name = re.search(r'\((.*?)\)', plant_name).group(1)
+    # Store last import dates as dictionary, store plant names
+    last_import_date = {}
+    sql_plant_list = []
+    for plant in result_set:
+        last_import_date[plant[0]] = plant[1]
+        sql_plant_list.append(plant[0])
 
-    # Check if plant name in SQL table does not exist, if so, create entry in plant table
-    if common_name not in sql_plant_list:
-        query = sqlalchemy.insert(plant_table).values(
-            id=plant_id + 1,
-            name_common=common_name,
-            name_latin=latin_name)
-        result_proxy = connection.execute(query)
+    # Insert plant data into database tables
+    num_columns = 4  # four columns of sensor data
+    plant_id = 0
+    for plant_name, dates_array in plant_dates.items():
+        common_name = plant_name[0:plant_name.find('(') - 1]
+        latin_name = re.search(r'\((.*?)\)', plant_name).group(1)
 
-    # Check against date of last import and only update for dates not in database
+        # Check if plant name in SQL table does not exist, if so, create entry in plant table
+        if common_name not in sql_plant_list:
+            query = sqlalchemy.insert(plant_table).values(
+                id=plant_id + 1,
+                name_common=common_name,
+                name_latin=latin_name)
+            result_proxy = connection.execute(query)
 
-    if last_import_date[common_name] is None:
-        insert_data_sql(dates_array, data, plant_id, dt.date(2020, 1, 1))
-        print(
-            f'Data was successfully imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
-    elif last_import_date[common_name] is not None:
-        if last_date_data[plant_name] > last_import_date[common_name]:
-            insert_data_sql(dates_array, data, plant_id,
-                            last_import_date[common_name])
+        # Check against date of last import and only update for dates not in database
+
+        if last_import_date[common_name] is None:
+            insert_data_sql(dates_array, data, plant_id, dt.date(2020, 1, 1))
             print(
-                f'More data was imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
-        else:
-            print(f'Data for {plant_name} is up to date.')
-    plant_id += 1
+                f'Data was successfully imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
+        elif last_import_date[common_name] is not None:
+            if last_date_data[plant_name] > last_import_date[common_name]:
+                insert_data_sql(dates_array, data, plant_id,
+                                last_import_date[common_name])
+                print(
+                    f'More data was imported for {plant_name} through {last_date_data[plant_name].strftime("%Y-%m-%d")}')
+            else:
+                print(f'Data for {plant_name} is up to date.')
+        plant_id += 1
